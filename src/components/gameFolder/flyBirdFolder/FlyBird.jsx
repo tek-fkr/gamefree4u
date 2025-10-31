@@ -6,6 +6,7 @@ import birdImg from "../media/image.jpg";
 import pipeImg from "../media/pipe.png";
 import gameMusicFile from "../media/modi.mp3";
 import gameOverFile from "../media/memeGirl.mp3";
+import gameOverFile2 from "../media/amitabh.mp3";
 
 export default function FlyBird() {
   const canvasRef = useRef(null);
@@ -19,11 +20,12 @@ export default function FlyBird() {
   const scoreRef = useRef(0);
   const animationIdRef = useRef(null);
   const gameMusicRef = useRef(null);
-  const gameOverSoundRef = useRef(null);
+  const gameOverSoundRef1 = useRef(null);
+  const gameOverSoundRef2 = useRef(null);
+  const lastGameOverIndexRef = useRef(null);
   const gameOverMsgRef = useRef('');
   const startInvulnerableRef = useRef(false);
   const invulTimeoutRef = useRef(null);
-  const firstOutRef = useRef(false); // track if we've skipped the gameOver sound once
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -40,15 +42,16 @@ export default function FlyBird() {
   // Load sounds (store in refs so we have single instances)
   gameMusicRef.current = new Audio(gameMusicFile);
   gameMusicRef.current.loop = true;
-  gameOverSoundRef.current = new Audio(gameOverFile);
+  gameOverSoundRef1.current = new Audio(gameOverFile);
+  gameOverSoundRef2.current = new Audio(gameOverFile2);
 
     // Bird physics
     let birdX = 60;
     let birdY = 200;
     let birdVelocity = 0;
-  // increased bird size for better visibility
-  const birdWidth = 68; // was 34
-  const birdHeight = 48; // was 24
+  // bird size (reduced)
+  const birdWidth = 34; // decreased size
+  const birdHeight = 24; // decreased size
   const gravity = 0.4;
   const lift = -6;
 
@@ -99,6 +102,14 @@ export default function FlyBird() {
         // autoplay may be blocked; ignore
       }
 
+      // ensure any game-over sounds are stopped when restarting
+      try {
+        if (gameOverSoundRef1.current) { gameOverSoundRef1.current.pause(); gameOverSoundRef1.current.currentTime = 0; }
+      } catch (e) {}
+      try {
+        if (gameOverSoundRef2.current) { gameOverSoundRef2.current.pause(); gameOverSoundRef2.current.currentTime = 0; }
+      } catch (e) {}
+
       // give a short invulnerability window to avoid instant-out on the first pipe
       startInvulnerableRef.current = true;
       if (invulTimeoutRef.current) clearTimeout(invulTimeoutRef.current);
@@ -124,16 +135,30 @@ export default function FlyBird() {
         gameMusicRef.current.pause();
       } catch (err) {}
 
-      // play game over sound, but skip the first-out sound once if not played before
-      if (!firstOutRef.current) {
-        // mark that we've now skipped the first-out sound
-        firstOutRef.current = true;
-      } else {
-        try {
-          gameOverSoundRef.current.currentTime = 0;
-          gameOverSoundRef.current.play();
-        } catch (err) {}
-      }
+      // choose one of the two game-over sounds to play (shuffle without immediate repeat)
+      try {
+        // stop both to ensure only one plays
+        if (gameOverSoundRef1.current) {
+          try { gameOverSoundRef1.current.pause(); gameOverSoundRef1.current.currentTime = 0; } catch (e) {}
+        }
+        if (gameOverSoundRef2.current) {
+          try { gameOverSoundRef2.current.pause(); gameOverSoundRef2.current.currentTime = 0; } catch (e) {}
+        }
+
+        // pick index 0 or 1; avoid repeating the same index twice in a row
+        let idx = Math.floor(Math.random() * 2);
+        if (lastGameOverIndexRef.current !== null && idx === lastGameOverIndexRef.current) {
+          idx = 1 - idx; // flip to avoid immediate repeat
+        }
+        lastGameOverIndexRef.current = idx;
+
+        const toPlay = idx === 0 ? gameOverSoundRef1.current : gameOverSoundRef2.current;
+        if (toPlay) {
+          toPlay.currentTime = 0;
+          // play() returns a promise in modern browsers; swallow rejections
+          toPlay.play().catch(() => {});
+        }
+      } catch (err) {}
     };
 
     // ✅ Restart game after 3 seconds
@@ -151,6 +176,13 @@ export default function FlyBird() {
       if (animationIdRef.current) cancelAnimationFrame(animationIdRef.current);
       animationIdRef.current = null;
       gameOverMsgRef.current = '';
+      // stop any game-over sounds when resetting
+      try {
+        if (gameOverSoundRef1.current) { gameOverSoundRef1.current.pause(); gameOverSoundRef1.current.currentTime = 0; }
+      } catch (e) {}
+      try {
+        if (gameOverSoundRef2.current) { gameOverSoundRef2.current.pause(); gameOverSoundRef2.current.currentTime = 0; }
+      } catch (e) {}
     };
 
     // ✅ Bird jump
@@ -281,9 +313,33 @@ export default function FlyBird() {
     // ✅ Events
     // named handlers so we can remove them on cleanup
     const keyHandler = (e) => {
+      // if game over: restart immediately on any key
+      if (isGameOverRef.current) {
+        // clear any pending invulnerability timeout
+        if (invulTimeoutRef.current) {
+          clearTimeout(invulTimeoutRef.current);
+          invulTimeoutRef.current = null;
+        }
+        resetGame();
+        startGame();
+        return;
+      }
+
+      // otherwise normal controls: Space to jump or start
       if (e.code === "Space") jump();
     };
-    const clickHandler = () => jump();
+    const clickHandler = () => {
+      if (isGameOverRef.current) {
+        if (invulTimeoutRef.current) {
+          clearTimeout(invulTimeoutRef.current);
+          invulTimeoutRef.current = null;
+        }
+        resetGame();
+        startGame();
+        return;
+      }
+      jump();
+    };
     document.addEventListener("keydown", keyHandler);
     canvas.addEventListener("click", clickHandler);
 
