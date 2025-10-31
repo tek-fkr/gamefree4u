@@ -37,6 +37,8 @@ export default function FlyBird() {
   const isCountingRef = useRef(false);
   const canRestartRef = useRef(false);
   const countdownIntervalRef = useRef(null);
+  // start button rect for the custom start screen (in CSS pixels)
+  const startButtonRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -78,16 +80,10 @@ export default function FlyBird() {
           // avoid creating multiple RAF loops
           if (!animationIdRef.current) draw();
         } else {
-          // show intro when images ready
+          // draw custom start screen when images ready
           try {
-            ctx.clearRect(0, 0, viewWidthRef.current, viewHeightRef.current);
-            bgX = 0;
-            ctx.drawImage(bg, bgX, 0, viewWidthRef.current, viewHeightRef.current);
-            ctx.drawImage(bg, bgX + viewWidthRef.current, 0, viewWidthRef.current, viewHeightRef.current);
-            ctx.fillStyle = "white";
-            ctx.font = "bold 32px sans-serif";
-            ctx.textAlign = "center";
-            ctx.fillText("Tap or Press Space to Start", viewWidthRef.current / 2, viewHeightRef.current / 2);
+            // helper to draw start screen
+            drawStartScreen();
           } catch (e) {}
         }
       }
@@ -96,6 +92,78 @@ export default function FlyBird() {
     bg.onload = onImageLoad;
     bird.onload = onImageLoad;
     pipe.onload = onImageLoad;
+
+    // drawStartScreen helper (used before RAF loop starts)
+    const drawStartScreen = () => {
+      const vw = viewWidthRef.current;
+      const vh = viewHeightRef.current;
+      try {
+        ctx.clearRect(0, 0, vw, vh);
+        bgX = 0;
+        ctx.drawImage(bg, bgX, 0, vw, vh);
+        ctx.drawImage(bg, bgX + vw, 0, vw, vh);
+
+        // Title: 'gameFree4Play' with golden gradient and subtle stroke
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 48px sans-serif';
+        const grad = ctx.createLinearGradient(vw / 2 - 150, vh / 2 - 80, vw / 2 + 150, vh / 2 - 80);
+        grad.addColorStop(0, '#fff1b8');
+        grad.addColorStop(0.5, '#ffd700');
+        grad.addColorStop(1, '#c78f00');
+        ctx.fillStyle = grad;
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = 12;
+        ctx.fillText('gameFree4Play', vw / 2, vh / 2 - 40);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+        ctx.strokeText('gameFree4Play', vw / 2, vh / 2 - 40);
+        ctx.restore();
+
+        // Start button
+        const btnW = Math.min(260, Math.round(vw * 0.5));
+        const btnH = 60;
+        const btnX = Math.round(vw / 2 - btnW / 2);
+        const btnY = Math.round(vh / 2 + 10);
+        // save for click detection
+        startButtonRef.current = { x: btnX, y: btnY, w: btnW, h: btnH };
+
+        // golden button gradient
+        const g = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY + btnH);
+        g.addColorStop(0, '#ffd26a');
+        g.addColorStop(0.5, '#ffb700');
+        g.addColorStop(1, '#c78f00');
+
+        // rounded rect background
+        const r = 10;
+        ctx.beginPath();
+        ctx.moveTo(btnX + r, btnY);
+        ctx.lineTo(btnX + btnW - r, btnY);
+        ctx.quadraticCurveTo(btnX + btnW, btnY, btnX + btnW, btnY + r);
+        ctx.lineTo(btnX + btnW, btnY + btnH - r);
+        ctx.quadraticCurveTo(btnX + btnW, btnY + btnH, btnX + btnW - r, btnY + btnH);
+        ctx.lineTo(btnX + r, btnY + btnH);
+        ctx.quadraticCurveTo(btnX, btnY + btnH, btnX, btnY + btnH - r);
+        ctx.lineTo(btnX, btnY + r);
+        ctx.quadraticCurveTo(btnX, btnY, btnX + r, btnY);
+        ctx.closePath();
+        ctx.fillStyle = g;
+        ctx.fill();
+        // button inner highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.fillRect(btnX + 6, btnY + 6, btnW - 12, Math.round(btnH / 2));
+
+        // button text
+        ctx.fillStyle = '#4a2b00';
+        ctx.font = 'bold 26px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('START', vw / 2, btnY + btnH / 2);
+      } catch (e) {
+        // drawing might fail if canvas/context not ready
+      }
+    };
 
     bg.src = bgImg;
     bird.src = birdImg;
@@ -131,12 +199,15 @@ export default function FlyBird() {
 
     // Pipes
     let pipes = [];
-  // pipe gap scales with bird size so larger bird gets a fairer gap
-  const pipeGap = Math.max(90, Math.round(birdHeight * 2.5));
+  // pipe gap: make it more forgiving so the player can pass more easily.
+  // Use a larger minimum and scale with bird size.
+  const pipeGap = Math.max(120, Math.round(birdHeight * 3.5));
     const pipeWidth = 50;
-    const pipeDistance = 250;
+    // increase horizontal spacing a bit so player has more time to react
+    const pipeDistance = 300;
 
-  const baseSpeed = 1.5; // starting (easier) speed for first rounds
+  // starting (easier) speed for first rounds — keep it low so game feels slower
+  const baseSpeed = 1.0;
   let gameSpeed = baseSpeed;
   let bgX = 0;
 
@@ -169,7 +240,8 @@ export default function FlyBird() {
       birdVelocity = 0;
       pipes = [];
       bgX = 0;
-      gameSpeed = 2.5;
+  // start at base speed (slower)
+  gameSpeed = baseSpeed;
 
       // restart background music
       try {
@@ -313,12 +385,9 @@ export default function FlyBird() {
       ctx.drawImage(bg, bgX, 0, vw, vh);
       ctx.drawImage(bg, bgX + vw, 0, vw, vh);
 
-      // Tap to start
+      // Start screen: show title + golden start button when game not started
       if (!isGameStartedRef.current && !isGameOverRef.current) {
-        ctx.fillStyle = "white";
-        ctx.font = "bold 32px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("Tap or Press Space to Start", vw / 2, vh / 2);
+        drawStartScreen();
         return;
       }
 
@@ -346,10 +415,9 @@ export default function FlyBird() {
           // update both ref and React state
           scoreRef.current += 1;
           setScore(scoreRef.current);
-          // speed progression based on how many pipes crossed
-          if (scoreRef.current >= 20) gameSpeed = baseSpeed * 1.04;
-          else if (scoreRef.current >= 7) gameSpeed = baseSpeed * 1.02;
-          else gameSpeed = baseSpeed;
+          // increase speed by 2% for every 10 pipes crossed
+          const increments = Math.floor(scoreRef.current / 10);
+          gameSpeed = baseSpeed * (1 + 0.02 * increments);
           continue;
         }
 
@@ -429,17 +497,10 @@ export default function FlyBird() {
       ctx.fillText(scoreText, boxX + boxWidth / 2, boxY + boxHeight / 2);
     };
 
-    // If images already ready (cache), render intro immediately
+    // If images already ready (cache), render our custom start screen immediately
     if (imagesReadyRef.current) {
       try {
-        ctx.clearRect(0, 0, viewWidthRef.current, viewHeightRef.current);
-        bgX = 0;
-        ctx.drawImage(bg, bgX, 0, viewWidthRef.current, viewHeightRef.current);
-        ctx.drawImage(bg, bgX + viewWidthRef.current, 0, viewWidthRef.current, viewHeightRef.current);
-        ctx.fillStyle = "white";
-        ctx.font = "bold 32px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("Tap or Press Space to Start", viewWidthRef.current / 2, viewHeightRef.current / 2);
+        drawStartScreen();
       } catch (e) {}
     }
 
@@ -491,6 +552,28 @@ export default function FlyBird() {
         if (invulTimeoutRef.current) { clearTimeout(invulTimeoutRef.current); invulTimeoutRef.current = null; }
         resetGame();
         startGame();
+        return;
+      }
+      // If game not started, only start when clicking the golden start button
+      if (!isGameStartedRef.current) {
+        try {
+          const rect = canvas.getBoundingClientRect();
+          const clientX = ev.clientX ?? (ev.touches && ev.touches[0] && ev.touches[0].clientX) ?? (ev.changedTouches && ev.changedTouches[0] && ev.changedTouches[0].clientX);
+          const clientY = ev.clientY ?? (ev.touches && ev.touches[0] && ev.touches[0].clientY) ?? (ev.changedTouches && ev.changedTouches[0] && ev.changedTouches[0].clientY);
+          const x = Math.round(clientX - rect.left);
+          const y = Math.round(clientY - rect.top);
+          const b = startButtonRef.current;
+          if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+            // user clicked the start button — ensure audio unlocked and then start
+            unlockAudio();
+            // try to play music explicitly on user gesture
+            try { gameMusicRef.current.currentTime = 0; gameMusicRef.current.play().catch(()=>{}); } catch(e) {}
+            startGame();
+          }
+        } catch (e) {
+          // fallback — start if any issue with hit detection
+          startGame();
+        }
         return;
       }
       jump();
