@@ -4,6 +4,7 @@ import "./FlyBird.css";
 import bgImg from "../media/bg.jpg";
 import birdImg from "../media/image.jpg";
 import pipeImg from "../media/pipe.png";
+import amitabh from "../media/amitabh.jpg";
 import gameMusicFile from "../media/modi.mp3";
 import gameOverFile from "../media/memeGirl.mp3";
 import gameOverFile2 from "../media/amitabh.mp3";
@@ -39,6 +40,14 @@ export default function FlyBird() {
   const countdownIntervalRef = useRef(null);
   // start button rect for the custom start screen (in CSS pixels)
   const startButtonRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
+  // amitabh image + display refs (shown when gameOverFile2 plays)
+  const amitabhImgRef = useRef(null);
+  const showAmitabhRef = useRef(false);
+  const amitabhOpacityRef = useRef(1);
+  const amitabhFadeStartRef = useRef(0);
+  const amitabhFadeDurationRef = useRef(500);
+  const amitabhStartTimeRef = useRef(0);
+  const amitabhFadingRef = useRef(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -175,6 +184,26 @@ export default function FlyBird() {
     gameOverSoundRef1.current = new Audio(gameOverFile);
     gameOverSoundRef2.current = new Audio(gameOverFile2);
 
+    // Load the amitabh image (used only when gameOverFile2 plays)
+    const amitabhImg = new Image();
+    amitabhImg.src = amitabh;
+    amitabhImgRef.current = amitabhImg;
+
+    // when the second game-over audio ends, start a smooth fade-out of the image
+    const onAmitabhEnded = () => {
+      // begin fading out the image smoothly
+      amitabhFadingRef.current = true;
+      amitabhFadeStartRef.current = performance.now();
+      // keep fade duration configurable
+      amitabhFadeDurationRef.current = 500; // ms
+    };
+    // attach listener (guard in case audio isn't ready yet)
+    try {
+      if (gameOverSoundRef2.current && gameOverSoundRef2.current.addEventListener) {
+        gameOverSoundRef2.current.addEventListener('ended', onAmitabhEnded);
+      }
+    } catch (e) {}
+
     // Bird physics
     let birdX = 60;
     let birdY = 200;
@@ -202,9 +231,9 @@ export default function FlyBird() {
   // pipe gap: make it more forgiving so the player can pass more easily.
   // Use a larger minimum and scale with bird size.
   const pipeGap = Math.max(120, Math.round(birdHeight * 3.5));
-    const pipeWidth = 50;
-    // increase horizontal spacing a bit so player has more time to react
-    const pipeDistance = 300;
+  const pipeWidth = 50;
+  // horizontal spacing between pipes (reduced so pipes are closer together)
+  const pipeDistance = 240;
 
   // starting (easier) speed for first rounds — keep it low so game feels slower
   const baseSpeed = 1.0;
@@ -219,8 +248,9 @@ export default function FlyBird() {
       const gapCenter = vh / 2 + (Math.random() * 100 - 50); // +/-50px
       // top pipe y so that the gap is centered at gapCenter
       const topY = Math.floor(gapCenter - pipeGap / 2 - 300); // 300 is pipe image height
-      // if starting invulnerable, spawn the first pipe further to the right so it won't collide immediately
-      const extraSpawnOffset = startInvulnerableRef.current && pipes.length === 0 ? 240 : 0;
+  // if starting invulnerable, spawn the first pipe slightly further to the right
+  // (small offset so it doesn't appear too far away)
+  const extraSpawnOffset = startInvulnerableRef.current && pipes.length === 0 ? 80 : 0;
       pipes.push({ x: vw + extraSpawnOffset, y: topY });
     };
 
@@ -228,6 +258,13 @@ export default function FlyBird() {
     const startGame = () => {
       if (isGameStartedRef.current) return;
       // update refs and React state
+      // ensure amitabh image is hidden when starting a new game
+      try {
+        showAmitabhRef.current = false;
+        amitabhOpacityRef.current = 0;
+        amitabhFadingRef.current = false;
+        amitabhStartTimeRef.current = 0;
+      } catch (e) {}
       isGameStartedRef.current = true;
       isGameOverRef.current = false;
       setIsGameStarted(true);
@@ -305,6 +342,15 @@ export default function FlyBird() {
         const toPlay = idx === 0 ? gameOverSoundRef1.current : gameOverSoundRef2.current;
         if (toPlay) {
           toPlay.currentTime = 0;
+          // if the second game-over file will play, show the amitabh image for its duration
+          if (idx === 1) {
+            try {
+              showAmitabhRef.current = true;
+              amitabhOpacityRef.current = 1;
+              amitabhFadingRef.current = false;
+              amitabhStartTimeRef.current = performance.now();
+            } catch (e) {}
+          }
           // play() returns a promise in modern browsers; swallow rejections
           toPlay.play().catch(() => {});
         }
@@ -363,6 +409,14 @@ export default function FlyBird() {
       } catch (e) {}
       try {
         if (gameOverSoundRef2.current) { gameOverSoundRef2.current.pause(); gameOverSoundRef2.current.currentTime = 0; }
+      } catch (e) {}
+      // hide amitabh image immediately on reset
+      try {
+        showAmitabhRef.current = false;
+        amitabhOpacityRef.current = 0;
+        amitabhFadingRef.current = false;
+        amitabhFadeStartRef.current = 0;
+        amitabhStartTimeRef.current = 0;
       } catch (e) {}
     };
 
@@ -440,6 +494,46 @@ export default function FlyBird() {
           break;
         }
       }
+
+      // Draw amitabh image (when requested). It should appear at bottom center with a
+      // small shake/bounce effect while visible. If the audio ended an ongoing fade will
+      // reduce opacity until it disappears smoothly.
+      try {
+        if (showAmitabhRef.current && amitabhImgRef.current && amitabhImgRef.current.complete) {
+          const now = performance.now();
+          const img = amitabhImgRef.current;
+          const imgNaturalW = img.naturalWidth || 200;
+          const imgNaturalH = img.naturalHeight || 100;
+          // target display width (responsive)
+          const imgW = Math.min(220, Math.round(viewWidthRef.current * 0.4));
+          const scale = imgW / imgNaturalW;
+          const imgH = Math.round(imgNaturalH * scale);
+          const baseX = Math.round(viewWidthRef.current / 2 - imgW / 2);
+          const baseY = Math.round(viewHeightRef.current - imgH - 10);
+
+          // wobble/bounce using small sin offsets (not too fast)
+          const t = (now - (amitabhStartTimeRef.current || now));
+          const offsetX = Math.sin(t * 0.04) * 6; // horizontal shake
+          const offsetY = Math.sin(t * 0.05) * 8; // vertical bounce
+
+          // handle fade-out if requested
+          if (amitabhFadingRef.current) {
+            const elapsed = now - (amitabhFadeStartRef.current || now);
+            const dur = amitabhFadeDurationRef.current || 400;
+            const alpha = Math.max(0, 1 - elapsed / dur);
+            amitabhOpacityRef.current = alpha;
+            if (alpha <= 0) {
+              showAmitabhRef.current = false;
+              amitabhFadingRef.current = false;
+            }
+          }
+
+          ctx.save();
+          ctx.globalAlpha = amitabhOpacityRef.current;
+          ctx.drawImage(img, baseX + offsetX, baseY + offsetY, imgW, imgH);
+          ctx.restore();
+        }
+      } catch (e) {}
 
       // ✅ Game Over Text (draw only)
       if (isGameOverRef.current) {
